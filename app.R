@@ -61,13 +61,16 @@ theme_1 <- function(){
 # LOAD IN DATA ---
 
 # Load in the site-level plots
-single.site.plots <- get(load("Data/modelled_plots_single.site.RData"))
+single.site.plots <- get(load("Data/single_site_list.RData"))
 
-# Load in the aggregated estate-level plots
-estate.plots <- get(load("Data/modelled_plots_aggregated_sites.RData"))
+# Load in the standardised data
+standardised.values <- read.csv("Data/single_site_standardised_values.csv")
+
+# Load in the predicted data
+predicted.values <- (read.csv("Data/single_site_predicted_values.csv"))
 
 # Extract species list
-species.list <- unique(sub("\\|.*", "", names(single.site.plots)))
+species.list <- unique(standardised.values$Species)
 
 
 # USER INTERFACE (ui.R) ----
@@ -117,21 +120,27 @@ ui <- fluidPage(
       sidebarPanel(selectInput(inputId = "species",  # Give the input a name "genotype"
                                label = "Select Species",  # Give the input a label to be displayed in the app
                                choices = species.list, selected = "Arctic Tern"),
-                   radioButtons(),
-                   selectInput(),
-                   width = 2.5,
+                   # radioButtons(),
+                   selectInput(inputId = "site",
+                               label = "2) Select Site(s) of Interest",
+                               choices = unique(sort(standardised.values$Site)),
+                               selected = NULL,
+                               multiple = FALSE),
+                   width = 3,
                    style = "background-color: #E3E3E3;"),
 
       # Panel(s) of plots
       tabsetPanel(
 
         tabPanel("Estate",
-                 card("`\n", plotOutput("estate_level"),
+                 card("`\n",
+                      # plotOutput("estate_level"),
                       downloadButton(outputId = "download_estate", label = "Download Plot (.png)", class = "butt1"),
                       class = "dattab")),
 
         tabPanel("Site",
-                 card("`\n", plotOutput("site_level"),
+                 card("`\n",
+                      plotOutput("single_site"),
                       downloadButton(outputId = "download_site", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
 
@@ -147,12 +156,55 @@ ui <- fluidPage(
 # SERVER (server.R) ----
 
 # Set the server.R
-server <- function(input, output) {
+server <- function(input, output, session) {
   
-  # Filter down to just the correct species
+  # Make drop-down choice of site dependent upon user input of species
+  observeEvent(input$species, {
+    updateSelectInput(session, "site", choices = filter(standardised.values, Species == input$species)$Site,
+                      selected = (filter(standardised.values, Species == input$species) %>% 
+                                    group_by(Site) %>% 
+                                    summarise(Total_Site_Count = sum(Count, na.rm = TRUE)) %>% 
+                                    ungroup() %>% 
+                                    arrange(desc(Total_Site_Count)) %>%
+                                    head(1) %>% 
+                                    arrange(Site))$Site)
+  })
   
-  # Use that to refine the selection criteria for both time frame and site selection
+  # Generate single site plot of change
+  single_site_plot <- reactive({
+    
+    # Filter down data to just correct species and site
+    standardised.values.single <- filter(standardised.values, Species == input$species, Site == input$site)
+    predicted.values.single <- filter(predicted.values, Species == input$species, Site == input$site)
+    
+    # Determine where to put label on hline
+    left.side.diff <- abs(filter(standardised.values.single, Year == min(standardised.values.single$Year))$Count - 100)
+    right.side.diff <- abs(filter(standardised.values.single, Year == max(standardised.values.single$Year))$Count - 100)
+    up.side.diff <- abs(max(standardised.values.single$CountSt) - 100)
+    bottom.side.diff <- abs(100 - min(standardised.values.single$CountSt))
+    
+    # Plot the outputs
+    ggplot() +
+        geom_hline(yintercept = 100, linetype = "dashed", size = 1) +
+        geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
+                      ifelse(up.side.diff > bottom.side.diff, 100, 88),
+                      label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
+        geom_point(data = standardised.values.single, aes(x = Year, y = CountSt), colour = "#000000", fill = "#000000", shape = 21, size = 3, alpha = 1) +
+        geom_ribbon(data = predicted.values.single, aes(x = Year, ymin = conf.low, ymax = conf.high),
+                    fill = "#1E90FF", alpha = 0.2, colour = "#1E90FF", linewidth = 0.05) + # Adds c.intervals for predictions as ribbon
+        geom_line(data = predicted.values.single, aes(x = Year, y = Count), colour = "#000000", linewidth = 1.1) +
+        labs(y = "Count\n",
+             x = "\nYear",
+             title = paste0(unique(standardised.values.single$Species), " | ", unique(standardised.values.single$Site))
+             ) +
+        theme_1()
+    
+  })
   
+  # Make the reactive into a plot
+  output$single_site <- renderPlot({ single_site_plot() })
+  
+  # ...
   # ...
   
 }
