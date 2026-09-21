@@ -20,8 +20,9 @@
 library(tidyverse)
 library(ggthemes)
 library(gridExtra)
+library(lme4)
+library(ggeffects)
 library(shiny)
-library(sf)
 library(rsconnect) # For publishing apps online
 library(bslib)
 library(DT)
@@ -137,7 +138,7 @@ ui <- fluidPage(
 
         tabPanel("Estate",
                  card("`\n",
-                      # plotOutput("estate_level"),
+                      plotOutput("estate"),
                       downloadButton(outputId = "download_estate", label = "Download Plot (.png)", class = "butt1"),
                       class = "dattab")),
 
@@ -233,7 +234,7 @@ server <- function(input, output, session) {
       ggsave(filename = file, plot = single_site_plot(), width = 14, height = 7)
     })
   
-  # Generate single site plot of change
+  # Generate all sites plots of change
   all_sites_plot <- reactive({
     
     # Filter down data to just correct species, site and year
@@ -275,8 +276,63 @@ server <- function(input, output, session) {
       ggsave(filename = file, plot = all_sites_plot(), width = 20, height = 30)
     })
   
-  # ...
-  # ...
+  # Generate an overall plot of change for species at estate level
+  estate_plot <- reactive({
+    
+    # Filter down data to just correct species, site and year
+    standardised.values.estate <- filter(standardised.values, Species == input$species, Year >= input$year)
+    predicted.values.estate <- filter(predicted.values, Species == input$species, Year >= input$year)
+    
+    # Model all the values across time
+    saveRDS(glm(Count ~ Year, data = predicted.values.estate, weights = Starting_Count, family = poisson(link = "log")), "Data/glm_temp.RDS")
+    aggregated.estate.model <- readRDS("Data/glm_temp.RDS")
+    file.remove("Data/glm_temp.RDS")
+    
+    # Range to predict variable
+    range.to.predict <- paste0("Year [", min(predicted.values.estate$Year), ":", max(predicted.values.estate$Year), "]")
+    
+    # Extract predictions
+    aggregated.site.predictions <- data.frame(ggpredict(aggregated.estate.model, terms = range.to.predict)) %>%
+      mutate(Species = unique(predicted.values.estate$Species),
+             predicted = round(predicted, digits = 3)) %>%
+      rename(Year = x,
+             Count = predicted) %>%
+      relocate(Species, .before = Year) %>%
+      dplyr::select(-group)
+    
+    # Plot the outputs
+    ggplot() +
+      geom_hline(yintercept = 100, linetype = "dashed", size = 1) +
+      # geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
+      #               ifelse(up.side.diff > bottom.side.diff, 100, 88),
+      #               label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
+      geom_ribbon(data = aggregated.site.predictions, aes(x = Year, ymin = conf.low, ymax = conf.high),
+                  fill = "#1E90FF", alpha = 0.2, colour = "#1E90FF", linewidth = 0.05) + # Adds c.intervals for predictions as ribbon
+      geom_line(data = aggregated.site.predictions, aes(x = Year, y = Count), colour = "#000000", linewidth = 1.1) +
+      scale_x_continuous(breaks = seq(min(predicted.values.estate$Year), max(predicted.values.estate$Year), by = 4)) +
+      labs(y = "Count\n",
+           x = "\nYear",
+           title = paste0(unique(predicted.values.estate$Species)),
+           caption = "\n- - - - - -   Relative abundance (100) during first year of species presence at site"
+      ) +
+      theme_1()
+    
+  })
+  
+  # Make the reactive into a plot
+  output$estate <- renderPlot({ estate_plot() })
+  
+  # Download the data
+  output$download_estate <- downloadHandler(
+    
+    # The placeholder name for the file will be called mtcars_plot.png
+    filename = function() {paste0(input$species, "_FULLestate_since", input$year, ".png")},
+    
+    # The content of the file will be the contents of the mtcars_plot() reactive expression
+    content = function(file){
+      ggsave(filename = file, plot = estate_plot(), width = 14, height = 8)
+    })
+  
   
 }
 
