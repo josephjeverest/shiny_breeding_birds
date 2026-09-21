@@ -122,10 +122,13 @@ ui <- fluidPage(
                                choices = species.list, selected = "Arctic Tern"),
                    # radioButtons(),
                    selectInput(inputId = "site",
-                               label = "2) Select Site(s) of Interest",
+                               label = "2) Select Site of Interest",
                                choices = unique(sort(standardised.values$Site)),
                                selected = NULL,
                                multiple = FALSE),
+                   sliderInput(inputId = "year",
+                               label = "3) Include Records since which Year?",
+                               min = 1976, max = 2025, value = 2000, sep = ""),
                    width = 3,
                    style = "background-color: #E3E3E3;"),
 
@@ -142,6 +145,12 @@ ui <- fluidPage(
                  card("`\n",
                       plotOutput("single_site"),
                       downloadButton(outputId = "download_site", label = "Download Data (.csv)", class = "butt2"),
+                      class = "dattab")),
+        
+        tabPanel("Sites (All)",
+                 card("`\n",
+                      plotOutput("all_sites", height = "900px"),
+                      downloadButton(outputId = "download_all_sites", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
 
       ) # End of tabsetPanel
@@ -170,12 +179,19 @@ server <- function(input, output, session) {
                                     arrange(Site))$Site)
   })
   
+  # Make drop-down choice of site dependent upon user input of species
+  observeEvent(input$species, {
+    updateSliderInput(session, "year", value = min(filter(predicted.values, Species == input$species)$Year),
+                      min = min(filter(predicted.values, Species == input$species)$Year),
+                      max = max(filter(predicted.values, Species == input$species)$Year))
+  })
+  
   # Generate single site plot of change
   single_site_plot <- reactive({
     
-    # Filter down data to just correct species and site
-    standardised.values.single <- filter(standardised.values, Species == input$species, Site == input$site)
-    predicted.values.single <- filter(predicted.values, Species == input$species, Site == input$site)
+    # Filter down data to just correct species, site and year
+    standardised.values.single <- filter(standardised.values, Species == input$species, Site == input$site, Year >= input$year)
+    predicted.values.single <- filter(predicted.values, Species == input$species, Site == input$site, Year >= input$year)
     
     # Determine where to put label on hline
     left.side.diff <- abs(filter(standardised.values.single, Year == min(standardised.values.single$Year))$Count - 100)
@@ -186,16 +202,18 @@ server <- function(input, output, session) {
     # Plot the outputs
     ggplot() +
         geom_hline(yintercept = 100, linetype = "dashed", size = 1) +
-        geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
-                      ifelse(up.side.diff > bottom.side.diff, 100, 88),
-                      label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
+        # geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
+        #               ifelse(up.side.diff > bottom.side.diff, 100, 88),
+        #               label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
         geom_point(data = standardised.values.single, aes(x = Year, y = CountSt), colour = "#000000", fill = "#000000", shape = 21, size = 3, alpha = 1) +
         geom_ribbon(data = predicted.values.single, aes(x = Year, ymin = conf.low, ymax = conf.high),
                     fill = "#1E90FF", alpha = 0.2, colour = "#1E90FF", linewidth = 0.05) + # Adds c.intervals for predictions as ribbon
         geom_line(data = predicted.values.single, aes(x = Year, y = Count), colour = "#000000", linewidth = 1.1) +
+        scale_x_continuous(breaks = seq(min(predicted.values.single$Year), max(predicted.values.single$Year), by = 3)) +
         labs(y = "Count\n",
              x = "\nYear",
-             title = paste0(unique(standardised.values.single$Species), " | ", unique(standardised.values.single$Site))
+             title = paste0(unique(standardised.values.single$Species), " | ", unique(standardised.values.single$Site)),
+             caption = "\n- - - - - -   Relative abundance (100) during first year of species presence at site"
              ) +
         theme_1()
     
@@ -203,6 +221,59 @@ server <- function(input, output, session) {
   
   # Make the reactive into a plot
   output$single_site <- renderPlot({ single_site_plot() })
+  
+  # Download the data
+  output$download_site <- downloadHandler(
+    
+    # The placeholder name for the file will be called mtcars_plot.png
+    filename = function() {paste0(input$species, "_", input$site, "_since", input$year, ".png")},
+    
+    # The content of the file will be the contents of the mtcars_plot() reactive expression
+    content = function(file){
+      ggsave(filename = file, plot = single_site_plot(), width = 14, height = 7)
+    })
+  
+  # Generate single site plot of change
+  all_sites_plot <- reactive({
+    
+    # Filter down data to just correct species, site and year
+    standardised.values.all <- filter(standardised.values, Species == input$species, Year >= input$year)
+    predicted.values.all <- filter(predicted.values, Species == input$species, Year >= input$year)
+    
+    # Plot the outputs
+    ggplot() +
+      geom_hline(yintercept = 100, linetype = "dashed", size = 1) +
+      # geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
+      #               ifelse(up.side.diff > bottom.side.diff, 100, 88),
+      #               label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
+      geom_point(data = standardised.values.all, aes(x = Year, y = CountSt), colour = "#000000", fill = "#000000", shape = 21, size = 3, alpha = 1) +
+      geom_ribbon(data = predicted.values.all, aes(x = Year, ymin = conf.low, ymax = conf.high),
+                  fill = "#1E90FF", alpha = 0.2, colour = "#1E90FF", linewidth = 0.05) + # Adds c.intervals for predictions as ribbon
+      geom_line(data = predicted.values.all, aes(x = Year, y = Count), colour = "#000000", linewidth = 1.1) +
+      # scale_x_continuous(breaks = seq(min(predicted.values.all$Year), max(predicted.values.all$Year), by = 4)) +
+      facet_wrap(vars(Site), scales = "free", ncol = 3) +
+      labs(y = "Count\n",
+           x = "\nYear",
+           title = paste0(unique(standardised.values.all$Species)),
+           caption = "\n- - - - - -   Relative abundance (100) during first year of species presence at site"
+      ) +
+      theme_1()
+    
+  })
+  
+  # Make the reactive into a plot
+  output$all_sites <- renderPlot({ all_sites_plot() })
+  
+  # Download the data
+  output$download_all_sites <- downloadHandler(
+    
+    # The placeholder name for the file will be called mtcars_plot.png
+    filename = function() {paste0(input$species, "_ALLsites_since", input$year, ".png")},
+    
+    # The content of the file will be the contents of the mtcars_plot() reactive expression
+    content = function(file){
+      ggsave(filename = file, plot = all_sites_plot(), width = 20, height = 30)
+    })
   
   # ...
   # ...
