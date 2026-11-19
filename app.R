@@ -13,65 +13,38 @@
 
 # LIBRARIES, DIRECTORY & THEMES ----
 
-# Set working directory
-# setwd("C:/Users/josepheverest/OneDrive - THE ROYAL SOCIETY FOR THE PROTECTION OF BIRDS/_RSPB_CDMU/Shiny_Apps/targets_by_reserve_shiny_app/")
-
 # Load packages
 library(tidyverse)
 library(ggthemes)
-library(gridExtra)
-library(lme4)
-library(ggeffects)
+library(ggtext)
 library(shiny)
 library(rsconnect) # For publishing apps online
 library(bslib)
+library(bsicons)
 library(DT)
 library(sjmisc)
 library(shinyWidgets)
+library(shinydashboard)
 
 # Generate manifest.json file
 # rsconnect::writeManifest()
 
 # Load in ggplot themes
-theme_1 <- function(){
-  theme_bw() +
-    theme(text = element_text(family = "Segoe UI Light"),
-          axis.text = element_text(size = 16), 
-          axis.title = element_text(size = 18),
-          axis.line.x = element_line(color="black"), 
-          axis.line.y = element_line(color="black"),
-          panel.border = element_blank(),
-          panel.grid.major.x = element_blank(),                                          
-          panel.grid.minor.x = element_blank(),
-          panel.grid.minor.y = element_blank(),
-          panel.grid.major.y = element_blank(),  
-          plot.margin = unit(c(1, 1, 1, 1), units = , "cm"),
-          plot.title = element_text(size = 14, vjust = 1, hjust = 0, face = "bold"),
-          plot.subtitle = element_text(size = 12, hjust = 0, face = "plain"),
-          plot.caption = element_text(size = 12, hjust = 1, face = "plain"),
-          legend.text = element_text(size = 12),          
-          legend.title = element_text(size = 10, face = "bold", hjust = 0.5),
-          legend.position = c(0.9, 0.9), 
-          legend.key = element_blank(),
-          legend.background = element_rect(color = "black", 
-                                           fill = "transparent", 
-                                           size = 2, linetype = "blank"))
-  }
+source("code/00_ggplot_themes.R")
 
 
-# LOAD IN DATA ---
+# LOAD & PREPARE DATA ---
 
-# Load in the site-level plots
-single.site.plots <- get(load("Data/single_site_list.RData"))
+# Load in the full modelled data
+estate <- read.csv("Data/full_aggregated_output.csv") %>% 
+  mutate(BetterTrend = ifelse(str_detect(BetterTrend, pattern = "RSPB"), "RSPB", "National"))
 
-# Load in the standardised data
-standardised.values <- read.csv("Data/single_site_standardised_values.csv")
+# Load in the single site level data
+single.site <- read.csv("Data/site_by_site_output.csv")
 
-# Load in the predicted data
-predicted.values <- (read.csv("Data/single_site_predicted_values.csv"))
-
-# Extract species list
-species.list <- unique(standardised.values$Species)
+# Determine selection choices
+species.list <- unique(estate$Species)
+time.periods <- unique(estate$TimePeriod)
 
 
 # USER INTERFACE (ui.R) ----
@@ -119,17 +92,20 @@ ui <- fluidPage(
     
     sidebarLayout(
       sidebarPanel(selectInput(inputId = "species",  # Give the input a name "genotype"
-                               label = "Select Species",  # Give the input a label to be displayed in the app
+                               label = "1) Select Species",  # Give the input a label to be displayed in the app
                                choices = species.list, selected = "Arctic Tern"),
-                   # radioButtons(),
+                   
+                   radioButtons(inputId = "period",
+                                label = "2) Select Time Period",
+                                choices = time.periods,
+                                selected = time.periods[1],
+                                inline = TRUE),
+                   
                    selectInput(inputId = "site",
-                               label = "2) Select Site of Interest",
-                               choices = unique(sort(standardised.values$Site)),
+                               label = "3) Select Individual Site",
+                               choices = unique(sort(single.site$Site)),
                                selected = NULL,
                                multiple = FALSE),
-                   sliderInput(inputId = "year",
-                               label = "3) Include Records since which Year?",
-                               min = 1976, max = 2025, value = 2000, sep = ""),
                    width = 3,
                    style = "background-color: #E3E3E3;"),
 
@@ -138,6 +114,20 @@ ui <- fluidPage(
 
         tabPanel("Estate",
                  card("`\n",
+                      layout_column_wrap(value_box(title = "Trend on RSPB Reserves", 
+                                                   showcase = bs_icon("geo", size = 30), 
+                                                   value = uiOutput("rspbtrend"),
+                                                   theme = "bg-success"),
+                                         
+                                         value_box(title = "National Trend", 
+                                                   showcase = bs_icon("map", size = 30), 
+                                                   value = uiOutput("nationaltrend"),  
+                                                   theme = "bg-info"),
+                                         
+                                         value_box(title = "Which performed better?",
+                                                   showcase = bs_icon("graph-down", size = 30), 
+                                                   value = uiOutput("better"),  
+                                                   theme = "bg-success")),
                       plotOutput("estate"),
                       downloadButton(outputId = "download_estate", label = "Download Plot (.png)", class = "butt1"),
                       class = "dattab")),
@@ -145,14 +135,14 @@ ui <- fluidPage(
         tabPanel("Site",
                  card("`\n",
                       plotOutput("single_site"),
-                      downloadButton(outputId = "download_site", label = "Download Data (.csv)", class = "butt2"),
+                      # downloadButton(outputId = "download_site", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab")),
         
-        tabPanel("Sites (All)",
-                 card("`\n",
-                      plotOutput("all_sites", height = "900px"),
-                      downloadButton(outputId = "download_all_sites", label = "Download Data (.csv)", class = "butt2"),
-                      class = "dattab"))
+        # tabPanel("Sites (All)",
+        #          card("`\n",
+        #               plotOutput("all_sites", height = "900px"),
+        #               downloadButton(outputId = "download_all_sites", label = "Download Data (.csv)", class = "butt2"),
+        #               class = "dattab"))
 
       ) # End of tabsetPanel
 
@@ -170,169 +160,181 @@ server <- function(input, output, session) {
   
   # Make drop-down choice of site dependent upon user input of species
   observeEvent(input$species, {
-    updateSelectInput(session, "site", choices = filter(standardised.values, Species == input$species)$Site,
-                      selected = (filter(standardised.values, Species == input$species) %>% 
-                                    group_by(Site) %>% 
-                                    summarise(Total_Site_Count = sum(Count, na.rm = TRUE)) %>% 
-                                    ungroup() %>% 
+    updateSelectInput(session, "site", choices = filter(single.site, Species == input$species)$Site,
+                      selected = (filter(single.site, Species == input$species) %>%
+                                    group_by(Site) %>%
+                                    summarise(Total_Site_Count = sum(Count, na.rm = TRUE)) %>%
+                                    ungroup() %>%
                                     arrange(desc(Total_Site_Count)) %>%
-                                    head(1) %>% 
+                                    head(1) %>%
                                     arrange(Site))$Site)
   })
-  
-  # Make drop-down choice of site dependent upon user input of species
-  observeEvent(input$species, {
-    updateSliderInput(session, "year", value = min(filter(predicted.values, Species == input$species)$Year),
-                      min = min(filter(predicted.values, Species == input$species)$Year),
-                      max = max(filter(predicted.values, Species == input$species)$Year))
-  })
-  
-  # Generate single site plot of change
-  single_site_plot <- reactive({
-    
-    # Filter down data to just correct species, site and year
-    standardised.values.single <- filter(standardised.values, Species == input$species, Site == input$site, Year >= input$year)
-    predicted.values.single <- filter(predicted.values, Species == input$species, Site == input$site, Year >= input$year)
-    
-    # Determine where to put label on hline
-    left.side.diff <- abs(filter(standardised.values.single, Year == min(standardised.values.single$Year))$Count - 100)
-    right.side.diff <- abs(filter(standardised.values.single, Year == max(standardised.values.single$Year))$Count - 100)
-    up.side.diff <- abs(max(standardised.values.single$CountSt) - 100)
-    bottom.side.diff <- abs(100 - min(standardised.values.single$CountSt))
-    
-    # Plot the outputs
-    ggplot() +
-        geom_hline(yintercept = 100, linetype = "dashed", size = 1) +
-        # geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
-        #               ifelse(up.side.diff > bottom.side.diff, 100, 88),
-        #               label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
-        geom_point(data = standardised.values.single, aes(x = Year, y = CountSt), colour = "#000000", fill = "#000000", shape = 21, size = 3, alpha = 1) +
-        geom_ribbon(data = predicted.values.single, aes(x = Year, ymin = conf.low, ymax = conf.high),
-                    fill = "#1E90FF", alpha = 0.2, colour = "#1E90FF", linewidth = 0.05) + # Adds c.intervals for predictions as ribbon
-        geom_line(data = predicted.values.single, aes(x = Year, y = Count), colour = "#000000", linewidth = 1.1) +
-        scale_x_continuous(breaks = seq(min(predicted.values.single$Year), max(predicted.values.single$Year), by = 3)) +
-        labs(y = "Count\n",
-             x = "\nYear",
-             title = paste0(unique(standardised.values.single$Species), " | ", unique(standardised.values.single$Site)),
-             caption = "\n- - - - - -   Relative abundance (100) during first year of species presence at site"
-             ) +
-        theme_1()
-    
-  })
-  
-  # Make the reactive into a plot
-  output$single_site <- renderPlot({ single_site_plot() })
-  
-  # Download the data
-  output$download_site <- downloadHandler(
-    
-    # The placeholder name for the file will be called mtcars_plot.png
-    filename = function() {paste0(input$species, "_", input$site, "_since", input$year, ".png")},
-    
-    # The content of the file will be the contents of the mtcars_plot() reactive expression
-    content = function(file){
-      ggsave(filename = file, plot = single_site_plot(), width = 14, height = 7)
-    })
-  
-  # Generate all sites plots of change
-  all_sites_plot <- reactive({
-    
-    # Filter down data to just correct species, site and year
-    standardised.values.all <- filter(standardised.values, Species == input$species, Year >= input$year)
-    predicted.values.all <- filter(predicted.values, Species == input$species, Year >= input$year)
-    
-    # Plot the outputs
-    ggplot() +
-      geom_hline(yintercept = 100, linetype = "dashed", size = 1) +
-      # geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
-      #               ifelse(up.side.diff > bottom.side.diff, 100, 88),
-      #               label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
-      geom_point(data = standardised.values.all, aes(x = Year, y = CountSt), colour = "#000000", fill = "#000000", shape = 21, size = 3, alpha = 1) +
-      geom_ribbon(data = predicted.values.all, aes(x = Year, ymin = conf.low, ymax = conf.high),
-                  fill = "#1E90FF", alpha = 0.2, colour = "#1E90FF", linewidth = 0.05) + # Adds c.intervals for predictions as ribbon
-      geom_line(data = predicted.values.all, aes(x = Year, y = Count), colour = "#000000", linewidth = 1.1) +
-      # scale_x_continuous(breaks = seq(min(predicted.values.all$Year), max(predicted.values.all$Year), by = 4)) +
-      facet_wrap(vars(Site), scales = "free", ncol = 3) +
-      labs(y = "Count\n",
-           x = "\nYear",
-           title = paste0(unique(standardised.values.all$Species)),
-           caption = "\n- - - - - -   Relative abundance (100) during first year of species presence at site"
-      ) +
-      theme_1()
-    
-  })
-  
-  # Make the reactive into a plot
-  output$all_sites <- renderPlot({ all_sites_plot() })
-  
-  # Download the data
-  output$download_all_sites <- downloadHandler(
-    
-    # The placeholder name for the file will be called mtcars_plot.png
-    filename = function() {paste0(input$species, "_ALLsites_since", input$year, ".png")},
-    
-    # The content of the file will be the contents of the mtcars_plot() reactive expression
-    content = function(file){
-      ggsave(filename = file, plot = all_sites_plot(), width = 20, height = 30)
-    })
   
   # Generate an overall plot of change for species at estate level
   estate_plot <- reactive({
     
     # Filter down data to just correct species, site and year
-    standardised.values.estate <- filter(standardised.values, Species == input$species, Year >= input$year)
-    predicted.values.estate <- filter(predicted.values, Species == input$species, Year >= input$year)
-    
-    # Model all the values across time
-    saveRDS(glm(Count ~ Year, data = predicted.values.estate, weights = Starting_Count, family = poisson(link = "log")), "Data/glm_temp.RDS")
-    aggregated.estate.model <- readRDS("Data/glm_temp.RDS")
-    file.remove("Data/glm_temp.RDS")
-    
-    # Range to predict variable
-    range.to.predict <- paste0("Year [", min(predicted.values.estate$Year), ":", max(predicted.values.estate$Year), "]")
-    
-    # Extract predictions
-    aggregated.site.predictions <- data.frame(ggpredict(aggregated.estate.model, terms = range.to.predict)) %>%
-      mutate(Species = unique(predicted.values.estate$Species),
-             predicted = round(predicted, digits = 3)) %>%
-      rename(Year = x,
-             Count = predicted) %>%
-      relocate(Species, .before = Year) %>%
-      dplyr::select(-group)
-    
-    # Plot the outputs
-    ggplot() +
-      geom_hline(yintercept = 100, linetype = "dashed", size = 1) +
-      # geom_text(aes(ifelse(left.side.diff > right.side.diff, min(predicted.values.single$Year) + 2, max(predicted.values.single$Year) - 2),
-      #               ifelse(up.side.diff > bottom.side.diff, 100, 88),
-      #               label = "Relative Abundance (100) during\nfirst year of species presence", vjust = -0.5)) +
-      geom_ribbon(data = aggregated.site.predictions, aes(x = Year, ymin = conf.low, ymax = conf.high),
-                  fill = "#1E90FF", alpha = 0.2, colour = "#1E90FF", linewidth = 0.05) + # Adds c.intervals for predictions as ribbon
-      geom_line(data = aggregated.site.predictions, aes(x = Year, y = Count), colour = "#000000", linewidth = 1.1) +
-      scale_x_continuous(breaks = seq(min(predicted.values.estate$Year), max(predicted.values.estate$Year), by = 4)) +
-      labs(y = "Count\n",
-           x = "\nYear",
-           title = paste0(unique(predicted.values.estate$Species)),
-           caption = "\n- - - - - -   Relative abundance (100) during first year of species presence at site"
-      ) +
-      theme_1()
+    estate.species <- filter(estate, Species == input$species, TimePeriod == input$period)
+
+    # Generate a plot for that species and time period
+    (estate_plot <- ggplot() +
+        
+        geom_hline(yintercept = 100, linetype = "dashed", size = 0.5) +
+        
+        geom_point(data = filter(estate.species, DataUse == "Points"),
+                   aes(x = Year, y = value, fill = Source, shape = Source), size = 3, colour = "#000000") +
+        
+        geom_ribbon(data = filter(estate.species, DataUse == "Trendline"),
+                    aes(x = Year, ymin = lo, ymax = hi, fill = Source), alpha = 0.3) +
+        
+        geom_line(data = filter(estate.species, DataUse == "Trendline"),
+                  aes(x = Year, y = value, colour = Source), linewidth = 1) +
+        
+        scale_shape_manual(values = c(24, 21)) +
+        
+        scale_fill_manual(values = c("#4876FF", "#66CD00")) +
+        
+        scale_colour_manual(values = c("#4876FF", "#66CD00")) +
+        
+        scale_y_continuous(limits = c(0, NA)) + 
+        
+        labs(x = "\nYear\n.",
+             y = "Population Index\n",
+             title = input$species,
+             subtitle = input$period,
+             caption = paste0("**Model Parameters:** trend is **",
+                              ifelse(str_detect(unique(estate.species$RSPB_ModelSlope), pattern = "increase"),
+                                     "<span style = 'color: #228B22;'>",
+                                     "<span style = 'color: #CD0000;'>"),
+                              str_to_lower(unique(estate.species$RSPB_ModelSlope)),
+                              "**; chi-squared p-value = **",
+                              ifelse(unique(estate.species$RSPB_ModelChiSq) < 0.05,
+                                     "<span style = 'color: #228B22;'>",
+                                     "<span style = 'color: #CD0000;'>"),
+                              unique(estate.species$RSPB_ModelChiSq),
+                              "</span>",
+                              "** with **",
+                              ifelse(unique(estate.species$RSPB_ModelFit) == "Good",
+                                     "<span style = 'color: #228B22;'>",
+                                     "<span style = 'color: #CD0000;'>"),
+                              str_to_lower(unique(estate.species$RSPB_ModelFit)),
+                              "</span>",
+                              "** model fit")) +
+        
+        theme_1() +
+        theme(legend.position = "right",
+              plot.caption = element_markdown()))
     
   })
   
   # Make the reactive into a plot
   output$estate <- renderPlot({ estate_plot() })
   
-  # Download the data
+  
+  # Generate a download button for the plot
   output$download_estate <- downloadHandler(
     
     # The placeholder name for the file will be called mtcars_plot.png
-    filename = function() {paste0(input$species, "_FULLestate_since", input$year, ".png")},
+    filename = function() {paste0(input$species, "_", input$period, ".png")},
     
     # The content of the file will be the contents of the mtcars_plot() reactive expression
-    content = function(file){
-      ggsave(filename = file, plot = estate_plot(), width = 14, height = 8)
+    content = function(file){ ggsave(filename = file, plot = estate_plot(), width = 15, height = 8) }
+    
+    )
+  
+  
+  # Generate an overall plot of change for species at a site-by-site level
+  single_site_plot <- reactive({
+    
+    # Filter down the data to the site level
+    # individual <- filter(single.site, Species == input$species, Site == input$Site)
+    individual <- filter(single.site, Species == "Arctic Tern", Site == "The Skerries")
+    
+    # Reorder factor level of ValueSource
+    individual$ValueSource <- factor(individual$ValueSource,
+                                     levels = c("Surveyed", "GAM"))
+    
+    # Generate single site plot with flexibe y-axes
+    (single_site_plot <- ggplot() +
+        
+        geom_vline(xintercept = 1995, colour = "gray", alpha = 0.4, size = 0.3) +
+        geom_vline(xintercept = 2000, colour = "gray", alpha = 0.4, size = 0.3) +
+        geom_vline(xintercept = 2005, colour = "gray", alpha = 0.4, size = 0.3) +
+        geom_vline(xintercept = 2010, colour = "gray", alpha = 0.4, size = 0.3) +
+        geom_vline(xintercept = 2015, colour = "gray", alpha = 0.4, size = 0.3) +
+        geom_vline(xintercept = 2020, colour = "gray", alpha = 0.4, size = 0.3) +
+        geom_vline(xintercept = 2025, colour = "gray", alpha = 0.4, size = 0.3) +
+        
+        geom_vline(data = individual, aes(xintercept = AcquisitionYear),
+                   linetype = "dashed", size = 0.75, colour = "#00008B") +
+        
+        geom_line(data = filter(individual, ValueType == "Imputed"),
+                  aes(x = Year, y = Count), colour = "#000000", linewidth = 1, alpha = 0.2) +
+        
+        geom_line(data = filter(individual, ValueType == "Imputed", Year >= FirstYear, Year <= FinalYear),
+                  aes(x = Year, y = Count), colour = "#000000", linewidth = 1) +
+        
+        geom_point(data = filter(individual, ValueType == "Fitted"), aes(x = Year, y = Count),
+                   shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C", alpha = 0.3) +
+        
+        geom_point(data = filter(individual, ValueType == "Fitted", Year >= FirstYear, Year <= FinalYear),
+                   aes(x = Year, y = Count), shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C") +
+        
+        geom_point(data = filter(individual, ValueType == "Observed"), aes(x = Year, y = Count, fill = ValueSource),
+                   shape = 21, size = 3, colour = "#000000") +
+        
+        scale_fill_manual(values = c("#FFD700", "#00EE00")) +
+        
+        scale_y_continuous(limits = c(0, NA)) +
+        
+        scale_x_continuous(breaks = c(1995, 2005, 2015, 2025)) +
+        
+        labs(
+          # title = input$species,
+          #    subtitle = input$site,
+             caption = "**KEY:** **Yellow** = OBSERVED; **Green** = GAM (Additional Imputation); **Red** = FITTED; **Black line** = IMPUTED; **Blue line** = Acquisition year",
+             x = "\nYear\n.",
+             y = "Count\n") +
+        
+        theme_1() +
+        theme(legend.position = "none",
+              plot.caption = element_markdown(),
+              panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)))
+      
+  })
+  
+  # Make the reactive into a plot
+  output$single_site <- renderPlot({ single_site_plot() })
+  
+  # Put plots on for all sites into one tab
+  # Decide whether you want equal axes or not
+  # Decide whether you want to see imputed values or not too
+  # Make plot work
+  # Add colours to each key element in the caption of this plot
+  
+
+  
+  # Determine RSPB level trend
+  output$rspbtrend <- renderText({
+    
+    paste0(ifelse(unique(filter(estate, Species == input$species, TimePeriod == input$period)$RSPB_PercentChange) > 0, "+", ""),
+           unique(filter(estate, Species == input$species, TimePeriod == input$period)$RSPB_PercentChange),
+           "%") 
     })
   
+  # Determine national level trend
+  output$nationaltrend <- renderText({
+    
+    paste0(ifelse(unique(filter(estate, Species == input$species, TimePeriod == input$period)$National_PercentChange) > 0, "+", ""),
+           unique(filter(estate, Species == input$species, TimePeriod == input$period)$National_PercentChange),
+           "%") 
+  })
+  
+  # Determine national level trend
+  output$better <- renderText({
+    
+    paste0(unique(filter(estate, Species == input$species, TimePeriod == input$period)$BetterTrend)) 
+  })
   
 }
 
