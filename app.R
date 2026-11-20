@@ -42,6 +42,9 @@ estate <- read.csv("Data/full_aggregated_output.csv") %>%
 # Load in the single site level data
 single.site <- read.csv("Data/site_by_site_output.csv")
 
+# Load in the combined species group data
+aggregated.group <- read.csv("Data/lwg_model_outputs.csv")
+
 # Determine selection choices
 species.list <- unique(estate$Species)
 time.periods <- unique(estate$TimePeriod)
@@ -115,7 +118,7 @@ ui <- fluidPage(
                                multiple = FALSE),
                    
                    radioButtons(inputId = "imputed",
-                                label = "- Show Imputed model values?",
+                                label = "- Show Imputed Model Values?",
                                 choices = c("Yes", "No"),
                                 selected = "Yes",
                                 inline = TRUE),
@@ -125,6 +128,12 @@ ui <- fluidPage(
                                 choices = c("Yes", "No"),
                                 selected = "No",
                                 inline = TRUE),
+                   
+                   selectInput(inputId = "group",
+                               label = "4) Select Species Group for Aggregated Trend",
+                               choices = unique(sort(aggregated.group$Group)),
+                               selected = NULL,
+                               multiple = FALSE),
                    
                    width = 3,
                    style = "background-color: #E3E3E3;"),
@@ -161,6 +170,12 @@ ui <- fluidPage(
         tabPanel("Sites (All)",
                  card(downloadButton(outputId = "download_all_sites", label = "Download Data (.csv)", class = "butt2"),
                       plotOutput("all_sites", height = "2000px"),
+                      class = "dattab")),
+        
+        tabPanel("Aggregated by Group",
+                 card("`\n",
+                      plotOutput("aggregated_group"),
+                      downloadButton(outputId = "download_group", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
 
       ) # End of tabsetPanel
@@ -189,6 +204,14 @@ server <- function(input, output, session) {
                                     arrange(desc(Total_Site_Count)) %>%
                                     head(1) %>%
                                     arrange(Site))$Site)
+  })
+  
+  
+  # GROUP-DEPENDENT CHOICE ----
+  
+  # Make drop-down choice of site dependent upon user input of species
+  observeEvent(input$species, {
+    updateSelectInput(session, "group", choices = filter(aggregated.group, str_detect(SpeciesInGroup, pattern = input$species))$Group)
   })
   
   
@@ -466,6 +489,72 @@ server <- function(input, output, session) {
     
   )
 
+  
+  # AGGREGATED GROUP PLOT ----
+  
+  # Generate an overall plot of change for species group
+  group_plot <- reactive({
+    
+    # Filter down data to just correct species, site and year
+    single.group <- filter(aggregated.group, Group == input$group, TimePeriod == input$period)
+    
+    # Generate a plot for that species and time period
+    (group_plot <- ggplot() +
+        
+        geom_hline(yintercept = 100, linetype = "dashed", size = 0.5) +
+        
+        geom_point(data = filter(single.group, DataUse == "Points"),
+                   aes(x = Year, y = value), size = 3, colour = "#000000", fill = "#66CD00", shape = 21) +
+        
+        geom_ribbon(data = filter(single.group, DataUse == "Trendline"),
+                    aes(x = Year, ymin = lo, ymax = hi), fill = "#66CD00", alpha = 0.3) +
+        
+        geom_line(data = filter(single.group, DataUse == "Trendline"),
+                  aes(x = Year, y = value), colour = "#66CD00", linewidth = 1) +
+        
+        labs(x = "\nYear\n.",
+             y = "Combined Population Index\n",
+             title = input$group,
+             subtitle = input$period,
+             caption = paste0("**Model Parameters:** trend is **",
+                              ifelse(str_detect(unique(single.group$RSPB_ModelSlope), pattern = "increase"),
+                                     "<span style = 'color: #228B22;'>",
+                                     "<span style = 'color: #CD0000;'>"),
+                              str_to_lower(unique(single.group$RSPB_ModelSlope)),
+                              "**; chi-squared p-value = **",
+                              ifelse(unique(single.group$RSPB_ModelChiSq) < 0.05,
+                                     "<span style = 'color: #228B22;'>",
+                                     "<span style = 'color: #CD0000;'>"),
+                              unique(single.group$RSPB_ModelChiSq),
+                              "</span>",
+                              "** with **",
+                              ifelse(unique(single.group$RSPB_ModelFit) == "Good",
+                                     "<span style = 'color: #228B22;'>",
+                                     "<span style = 'color: #CD0000;'>"),
+                              str_to_lower(unique(single.group$RSPB_ModelFit)),
+                              "</span>",
+                              "** model fit")) +
+        
+        theme_1() +
+        theme(legend.position = "right",
+              plot.caption = element_markdown()))
+    
+  })
+  
+  # Make the reactive into a plot
+  output$aggregated_group <- renderPlot({ group_plot() })
+  
+  # Generate a download button for the plot
+  output$download_group <- downloadHandler(
+    
+    # The placeholder name for the file will be called mtcars_plot.png
+    filename = function() {paste0(input$species, "_grouped_by_", input$group, "_", input$period, ".png")},
+    
+    # The content of the file will be the contents of the mtcars_plot() reactive expression
+    content = function(file){ ggsave(filename = file, plot = group_plot(), width = 15, height = 8) }
+    
+  )
+  
  
  # STATS ----
   
