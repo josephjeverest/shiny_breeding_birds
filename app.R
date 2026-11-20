@@ -95,14 +95,14 @@ ui <- fluidPage(
   navbarPage(
     
     # Title bar with icon
-    title = div(img(src = "RSPB_logo_2.png", height = "6%", width = "6%"), "Breeding Birds on Reserves", style = "font-size:32px"),
+    title = div(img(src = "RSPB_logo_2.png", height = "4%", width = "4%"), "Breeding Birds on Reserves (TEST - not for use)", style = "font-size:28px"),
     
     # Add footer
     footer = "Made by CDMU",
     
     sidebarLayout(
-      sidebarPanel(selectInput(inputId = "species",  # Give the input a name "genotype"
-                               label = "1) Select Species",  # Give the input a label to be displayed in the app
+      sidebarPanel(selectInput(inputId = "species",
+                               label = "1) Select Species",
                                choices = species.list, selected = "Arctic Tern"),
                    
                    radioButtons(inputId = "period",
@@ -154,7 +154,7 @@ ui <- fluidPage(
                                                    theme = "bg-info"),
                                          
                                          value_box(title = "Which performed better?",
-                                                   showcase = bs_icon("graph-down", size = 30), 
+                                                   showcase = bs_icon("graph-up", size = 30), 
                                                    value = uiOutput("better"),  
                                                    theme = "bg-success")),
                       plotOutput("estate"),
@@ -174,6 +174,16 @@ ui <- fluidPage(
         
         tabPanel("Aggregated by Group",
                  card("`\n",
+                      layout_column_wrap(value_box(title = "", 
+                                                   value = "",
+                                                   theme = "bg-info"),
+                                         value_box(title = "Aggregated Trend on RSPB Reserves", 
+                                                   showcase = bs_icon("geo", size = 30), 
+                                                   value = uiOutput("grouptrend"),
+                                                   theme = "bg-success"),
+                                         value_box(title = "", 
+                                                   value = "",
+                                                   theme = "bg-info")),
                       plotOutput("aggregated_group"),
                       downloadButton(outputId = "download_group", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
@@ -197,13 +207,15 @@ server <- function(input, output, session) {
   # Make drop-down choice of site dependent upon user input of species
   observeEvent(input$species, {
     updateSelectInput(session, "site", choices = filter(single.site, Species == input$species)$Site,
-                      selected = (filter(single.site, Species == input$species) %>%
-                                    group_by(Site) %>%
-                                    summarise(Total_Site_Count = sum(Count, na.rm = TRUE)) %>%
-                                    ungroup() %>%
-                                    arrange(desc(Total_Site_Count)) %>%
-                                    head(1) %>%
-                                    arrange(Site))$Site)
+                      # selected = (filter(single.site, Species == input$species) %>%
+                      #               group_by(Site) %>%
+                      #               summarise(Total_Site_Count = sum(Count, na.rm = TRUE)) %>%
+                      #               ungroup() %>%
+                      #               arrange(desc(Total_Site_Count)) %>%
+                      #               head(1) %>%
+                      #               arrange(Site))$Site
+                      selected = filter(single.site, Species == input$species)$Site[1]
+                      )
   })
   
   
@@ -574,10 +586,19 @@ server <- function(input, output, session) {
           "%") 
  })
  
- # Determine national level trend
+ # Determine the better of the two trends
  output$better <- renderText({
    
    paste0(unique(filter(estate, Species == input$species, TimePeriod == input$period)$BetterTrend)) 
+   
+ })
+ 
+ # Determine the rate of change by group
+ output$grouptrend <- renderText({
+   
+   paste0(ifelse(unique(filter(aggregated.group, Group == input$group, TimePeriod == input$period)$RSPB_PercentChange) > 0, "+", ""),
+          unique(filter(aggregated.group, Group == input$group, TimePeriod == input$period)$RSPB_PercentChange),
+          "%") 
  })
   
 }
