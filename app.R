@@ -130,7 +130,7 @@ ui <- fluidPage(
                                 inline = TRUE),
                    
                    selectInput(inputId = "group",
-                               label = "4) Select Species Group for Aggregated Trend",
+                               label = "4) Select Group for Aggregated Trend",
                                choices = unique(sort(aggregated.group$Group)),
                                selected = NULL,
                                multiple = FALSE),
@@ -172,7 +172,7 @@ ui <- fluidPage(
                       plotOutput("all_sites", height = "2000px"),
                       class = "dattab")),
         
-        tabPanel("Aggregated by Group",
+        tabPanel("Species Group",
                  card("`\n",
                       layout_column_wrap(value_box(title = "", 
                                                    value = "",
