@@ -46,6 +46,13 @@ single.site <- read.csv("Data/site_by_site_output.csv")
 species.list <- unique(estate$Species)
 time.periods <- unique(estate$TimePeriod)
 
+# Function to determine the number of rows in facet_plot()
+gg_facet_nrow <- function(p){
+  num_panels <- length(unique(ggplot_build(p)$data[[1]]$PANEL)) # get number of panels
+  num_cols <- ggplot_build(p)$layout$facet$params$ncol # get number of columns set by user
+  num_rows <- wrap_dims(num_panels, ncol=num_cols)[1] # determine number of rows
+}
+
 
 # USER INTERFACE (ui.R) ----
 
@@ -99,13 +106,26 @@ ui <- fluidPage(
                                 label = "2) Select Time Period",
                                 choices = time.periods,
                                 selected = time.periods[1],
-                                inline = TRUE),
+                                inline = FALSE),
                    
                    selectInput(inputId = "site",
                                label = "3) Select Individual Site",
                                choices = unique(sort(single.site$Site)),
                                selected = NULL,
                                multiple = FALSE),
+                   
+                   radioButtons(inputId = "imputed",
+                                label = "- Show Imputed model values?",
+                                choices = c("Yes", "No"),
+                                selected = "Yes",
+                                inline = TRUE),
+                   
+                   radioButtons(inputId = "equalaxes",
+                                label = "- Show all sites with equal axes?",
+                                choices = c("Yes", "No"),
+                                selected = "No",
+                                inline = TRUE),
+                   
                    width = 3,
                    style = "background-color: #E3E3E3;"),
 
@@ -132,17 +152,16 @@ ui <- fluidPage(
                       downloadButton(outputId = "download_estate", label = "Download Plot (.png)", class = "butt1"),
                       class = "dattab")),
 
-        tabPanel("Site",
+        tabPanel("Site (Single)",
                  card("`\n",
                       plotOutput("single_site"),
-                      # downloadButton(outputId = "download_site", label = "Download Data (.csv)", class = "butt2"),
+                      downloadButton(outputId = "download_single_site", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab")),
         
-        # tabPanel("Sites (All)",
-        #          card("`\n",
-        #               plotOutput("all_sites", height = "900px"),
-        #               downloadButton(outputId = "download_all_sites", label = "Download Data (.csv)", class = "butt2"),
-        #               class = "dattab"))
+        tabPanel("Sites (All)",
+                 card(downloadButton(outputId = "download_all_sites", label = "Download Data (.csv)", class = "butt2"),
+                      plotOutput("all_sites", height = "2000px"),
+                      class = "dattab"))
 
       ) # End of tabsetPanel
 
@@ -158,6 +177,8 @@ ui <- fluidPage(
 # Set the server.R
 server <- function(input, output, session) {
   
+  # SITE-DEPENDENT CHOICE ----
+  
   # Make drop-down choice of site dependent upon user input of species
   observeEvent(input$species, {
     updateSelectInput(session, "site", choices = filter(single.site, Species == input$species)$Site,
@@ -169,6 +190,9 @@ server <- function(input, output, session) {
                                     head(1) %>%
                                     arrange(Site))$Site)
   })
+  
+  
+  # FULL ESTATE PLOT ----
   
   # Generate an overall plot of change for species at estate level
   estate_plot <- reactive({
@@ -230,7 +254,6 @@ server <- function(input, output, session) {
   # Make the reactive into a plot
   output$estate <- renderPlot({ estate_plot() })
   
-  
   # Generate a download button for the plot
   output$download_estate <- downloadHandler(
     
@@ -243,13 +266,14 @@ server <- function(input, output, session) {
     )
   
   
-  # Generate an overall plot of change for species at a site-by-site level
+  # SINGLE SITE PLOT ----
+  
+  # Generate an single site plot of change for species at a site-by-site level
   single_site_plot <- reactive({
     
     # Filter down the data to the site level
-    # individual <- filter(single.site, Species == input$species, Site == input$Site)
-    individual <- filter(single.site, Species == "Arctic Tern", Site == "The Skerries")
-    
+    individual <- filter(single.site, Species == input$species, Site == input$site)
+
     # Reorder factor level of ValueSource
     individual$ValueSource <- factor(individual$ValueSource,
                                      levels = c("Surveyed", "GAM"))
@@ -269,16 +293,20 @@ server <- function(input, output, session) {
                    linetype = "dashed", size = 0.75, colour = "#00008B") +
         
         geom_line(data = filter(individual, ValueType == "Imputed"),
-                  aes(x = Year, y = Count), colour = "#000000", linewidth = 1, alpha = 0.2) +
+                  aes(x = Year, y = Count), colour = "#000000", linewidth = 1,
+                  alpha = ifelse(input$imputed == "Yes", 0.2, 0)) +
         
         geom_line(data = filter(individual, ValueType == "Imputed", Year >= FirstYear, Year <= FinalYear),
-                  aes(x = Year, y = Count), colour = "#000000", linewidth = 1) +
+                  aes(x = Year, y = Count), colour = "#000000", linewidth = 1,
+                  alpha = ifelse(input$imputed == "Yes", 1, 0)) +
         
         geom_point(data = filter(individual, ValueType == "Fitted"), aes(x = Year, y = Count),
-                   shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C", alpha = 0.3) +
+                   shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C",
+                   alpha = ifelse(input$imputed == "Yes", 0.3, 0)) +
         
         geom_point(data = filter(individual, ValueType == "Fitted", Year >= FirstYear, Year <= FinalYear),
-                   aes(x = Year, y = Count), shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C") +
+                   aes(x = Year, y = Count), shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C",
+                   alpha = ifelse(input$imputed == "Yes", 1, 0)) +
         
         geom_point(data = filter(individual, ValueType == "Observed"), aes(x = Year, y = Count, fill = ValueSource),
                    shape = 21, size = 3, colour = "#000000") +
@@ -289,10 +317,27 @@ server <- function(input, output, session) {
         
         scale_x_continuous(breaks = c(1995, 2005, 2015, 2025)) +
         
-        labs(
-          # title = input$species,
-          #    subtitle = input$site,
-             caption = "**KEY:** **Yellow** = OBSERVED; **Green** = GAM (Additional Imputation); **Red** = FITTED; **Black line** = IMPUTED; **Blue line** = Acquisition year",
+        labs(title = input$site,
+             subtitle = input$species,
+             caption = paste0("**KEY:  ",
+                              "<span style = 'color: #FFD700;'>",
+                              "Yellow**",
+                              "</span>",
+                              " = OBSERVED; ",
+                              "<span style = 'color: #00EE00;'>",
+                              " **Green**",
+                              "</span>",
+                              " = GAM (Additional Imputation); ",
+                              "<span style = 'color: #EE2C2C;'>",
+                              "**Red**",
+                              "</span>",
+                              " = FITTED; ",
+                              "**Black line**",
+                              " = IMPUTED; ",
+                              "<span style = 'color: #00008B;'>",
+                              "**Blue line**",
+                              "</span>",
+                              " = Acquisition year"),
              x = "\nYear\n.",
              y = "Count\n") +
         
@@ -306,35 +351,145 @@ server <- function(input, output, session) {
   # Make the reactive into a plot
   output$single_site <- renderPlot({ single_site_plot() })
   
-  # Put plots on for all sites into one tab
-  # Decide whether you want equal axes or not
-  # Decide whether you want to see imputed values or not too
-  # Make plot work
-  # Add colours to each key element in the caption of this plot
+  # Generate a download button for the plot
+  output$download_single_site <- downloadHandler(
+    
+    # The placeholder name for the file will be called mtcars_plot.png
+    filename = function() {paste0(input$species, "_", input$site, "_", input$period, ".png")},
+    
+    # The content of the file will be the contents of the mtcars_plot() reactive expression
+    content = function(file){ ggsave(filename = file, plot = single_site_plot(), width = 15, height = 8) }
+    
+  )
   
+  
+  # ALL SITES PLOT ----
 
-  
-  # Determine RSPB level trend
-  output$rspbtrend <- renderText({
+  # Generate an overall plot of change for all sites for species at a site-by-site level
+ all_sites_plot <- reactive({
+   
+   # Generate dataframe for all sites for the selected species
+   all.sites <- filter(single.site, Species == input$species)
     
-    paste0(ifelse(unique(filter(estate, Species == input$species, TimePeriod == input$period)$RSPB_PercentChange) > 0, "+", ""),
-           unique(filter(estate, Species == input$species, TimePeriod == input$period)$RSPB_PercentChange),
-           "%") 
-    })
-  
-  # Determine national level trend
-  output$nationaltrend <- renderText({
+   # Reorder factor level of ValueSource
+   all.sites$ValueSource <- factor(all.sites$ValueSource,
+                                    levels = c("Surveyed", "GAM"))
+   
+   # Generate single site plot with flexibe y-axes
+   (all_sites_plot <- ggplot() +
+       
+       geom_vline(xintercept = 1995, colour = "gray", alpha = 0.4, size = 0.3) +
+       geom_vline(xintercept = 2000, colour = "gray", alpha = 0.4, size = 0.3) +
+       geom_vline(xintercept = 2005, colour = "gray", alpha = 0.4, size = 0.3) +
+       geom_vline(xintercept = 2010, colour = "gray", alpha = 0.4, size = 0.3) +
+       geom_vline(xintercept = 2015, colour = "gray", alpha = 0.4, size = 0.3) +
+       geom_vline(xintercept = 2020, colour = "gray", alpha = 0.4, size = 0.3) +
+       geom_vline(xintercept = 2025, colour = "gray", alpha = 0.4, size = 0.3) +
+       
+       geom_vline(data = all.sites, aes(xintercept = AcquisitionYear),
+                  linetype = "dashed", size = 0.75, colour = "#00008B") +
+       
+       geom_line(data = filter(all.sites, ValueType == "Imputed"),
+                 aes(x = Year, y = Count), colour = "#000000", linewidth = 1,
+                 alpha = ifelse(input$imputed == "Yes", 0.2, 0)) +
+       
+       geom_line(data = filter(all.sites, ValueType == "Imputed", Year >= FirstYear, Year <= FinalYear),
+                 aes(x = Year, y = Count), colour = "#000000", linewidth = 1,
+                 alpha = ifelse(input$imputed == "Yes", 1, 0)) +
+       
+       geom_point(data = filter(all.sites, ValueType == "Fitted"), aes(x = Year, y = Count),
+                  shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C",
+                  alpha = ifelse(input$imputed == "Yes", 0.3, 0)) +
+       
+       geom_point(data = filter(all.sites, ValueType == "Fitted", Year >= FirstYear, Year <= FinalYear),
+                  aes(x = Year, y = Count), shape = 22, size = 3, colour = "#000000", fill = "#EE2C2C",
+                  alpha = ifelse(input$imputed == "Yes", 1, 0)) +
+       
+       geom_point(data = filter(all.sites, ValueType == "Observed"), aes(x = Year, y = Count, fill = ValueSource),
+                  shape = 21, size = 3, colour = "#000000") +
+       
+       scale_fill_manual(values = c("#FFD700", "#00EE00")) +
+       
+       # scale_y_continuous(ifelse(input$equalaxes == "Yes", limits = c(0, max(all.sites$Count, na.rm = TRUE)), limits = c(0,NA))) +
+       scale_y_continuous(limits = c(0,NA)) +
+       
+       scale_x_continuous(breaks = c(1995, 2005, 2015, 2025)) +
+       
+       facet_wrap(vars(Site), ncol = 3, scales = ifelse(input$equalaxes == "Yes", "free_x", "free")) +
+       
+       labs(title = input$species,
+            subtitle = "All monitoring sites since 1995",
+            caption = paste0("**KEY:  ",
+                             "<span style = 'color: #FFD700;'>",
+                             "Yellow**",
+                             "</span>",
+                             " = OBSERVED; ",
+                             "<span style = 'color: #00EE00;'>",
+                             " **Green**",
+                             "</span>",
+                             " = GAM (Additional Imputation); ",
+                             "<span style = 'color: #EE2C2C;'>",
+                             "**Red**",
+                             "</span>",
+                             " = FITTED; ",
+                             "**Black line**",
+                             " = IMPUTED; ",
+                             "<span style = 'color: #00008B;'>",
+                             "**Blue line**",
+                             "</span>",
+                             " = Acquisition year"),
+            x = "\nYear\n.",
+            y = "Count\n") +
+       
+       theme_1() +
+       theme(legend.position = "none",
+             plot.caption = element_markdown(),
+             panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)))
     
-    paste0(ifelse(unique(filter(estate, Species == input$species, TimePeriod == input$period)$National_PercentChange) > 0, "+", ""),
-           unique(filter(estate, Species == input$species, TimePeriod == input$period)$National_PercentChange),
-           "%") 
   })
   
-  # Determine national level trend
-  output$better <- renderText({
+  # Determine window height for facet_plot()
+  window_height <- reactive(gg_facet_nrow(all_sites_plot()))
+ 
+  # Make the reactive into a plot
+  output$all_sites <- renderPlot( { all_sites_plot() }, height = function(){ window_height()*250 })
+  
+  
+  # Generate a download button for the plot
+  output$download_all_sites <- downloadHandler(
     
-    paste0(unique(filter(estate, Species == input$species, TimePeriod == input$period)$BetterTrend)) 
-  })
+    # The placeholder name for the file will be called mtcars_plot.png
+    filename = function() {paste0(input$species, "_ALL_SITES_", input$period, ".png")},
+    
+    # The content of the file will be the contents of the mtcars_plot() reactive expression
+    content = function(file){ ggsave(filename = file, plot = all_sites_plot(), width = 15, height = 8) }
+    
+  )
+
+ 
+ # STATS ----
+  
+ # Determine RSPB level trend
+ output$rspbtrend <- renderText({
+   
+   paste0(ifelse(unique(filter(estate, Species == input$species, TimePeriod == input$period)$RSPB_PercentChange) > 0, "+", ""),
+          unique(filter(estate, Species == input$species, TimePeriod == input$period)$RSPB_PercentChange),
+          "%") 
+ })
+  
+ # Determine national level trend
+ output$nationaltrend <- renderText({
+   
+   paste0(ifelse(unique(filter(estate, Species == input$species, TimePeriod == input$period)$National_PercentChange) > 0, "+", ""),
+          unique(filter(estate, Species == input$species, TimePeriod == input$period)$National_PercentChange),
+          "%") 
+ })
+ 
+ # Determine national level trend
+ output$better <- renderText({
+   
+   paste0(unique(filter(estate, Species == input$species, TimePeriod == input$period)$BetterTrend)) 
+ })
   
 }
 
