@@ -4640,7 +4640,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "7295d21ebbbca5237d00ebc0b348bcc0"
+      "checksum": "68e4bdb91ed419cf8560b161020e464a"
     },
     "code/00_ggplot_themes.R": {
       "checksum": "b59d51a4a33943031c4336742cb529a0"
@@ -4649,16 +4649,22 @@
       "checksum": "29774b808a20d404e036388b743348fe"
     },
     "Data/full_aggregated_output.csv": {
-      "checksum": "85a55dd6501eb1c66cd20074c61b80ad"
+      "checksum": "0a97fd0725844e37bd129fdfd7b25564"
+    },
+    "Data/group_model_outputs.csv": {
+      "checksum": "9061da9fb3a68f5a2deda4281b408992"
+    },
+    "Data/lwg_model_outputs.csv": {
+      "checksum": "9061da9fb3a68f5a2deda4281b408992"
     },
     "Data/site_by_site_output.csv": {
-      "checksum": "2d8e442f7f2707085e38034b023ce626"
+      "checksum": "d3dfebf28c5c21827712d5dcf286bc9d"
     },
-    "LICENSE": {
-      "checksum": "cf9c7c1ba062a71b1ceee5a4280a1245"
+    "Data/webs_interannual_output.csv": {
+      "checksum": "dbc2df2235aabbc83b79f7c6cf0f35cc"
     },
     "README.md": {
-      "checksum": "96055e6919e68deda361c07d1845b63b"
+      "checksum": "4ea39d05f00d76a459d68cea6f7e359e"
     },
     "www/RSPB_logo_2.png": {
       "checksum": "251c319c74b2c83fad054aed1283e90c"

@@ -43,7 +43,10 @@ estate <- read.csv("Data/full_aggregated_output.csv") %>%
 single.site <- read.csv("Data/site_by_site_output.csv")
 
 # Load in the combined species group data
-aggregated.group <- read.csv("Data/lwg_model_outputs.csv")
+aggregated.group <- read.csv("Data/group_model_outputs.csv")
+
+# Load in the WeBS data
+webs <- read.csv("Data/webs_interannual_output.csv")
 
 # Determine selection choices
 species.list <- unique(estate$Species)
@@ -66,7 +69,7 @@ ui <- fluidPage(
   list(tags$head(HTML('<link rel="icon", href="RSPB_logo_2.png", 
                                    type="image/png" />'))),
   # Add title to Google tab
-  div(style = "padding: 1px 0px; width: '100%'", titlePanel(title = "", windowTitle = "Breeding Birds")),
+  div(style = "padding: 1px 0px; width: '100%'", titlePanel(title = "", windowTitle = "Trends on Reserves")),
   
   setBackgroundColor("#008B8B"),
   
@@ -95,7 +98,7 @@ ui <- fluidPage(
   navbarPage(
     
     # Title bar with icon
-    title = div(img(src = "RSPB_logo_2.png", height = "4%", width = "4%"), "Breeding Birds on Reserves (TEST - not for use)", style = "font-size:28px"),
+    title = div(img(src = "RSPB_logo_2.png", height = "4%", width = "4%"), "Trends on Reserves (TEST - not for use)", style = "font-size:28px"),
     
     # Add footer
     footer = "Made by CDMU",
@@ -186,6 +189,12 @@ ui <- fluidPage(
                                                    theme = "bg-info")),
                       plotOutput("aggregated_group"),
                       downloadButton(outputId = "download_group", label = "Download Data (.csv)", class = "butt2"),
+                      class = "dattab")),
+        
+        tabPanel("Wintering (WeBS)",
+                 card("`\n",
+                      plotOutput("wintering"),
+                      downloadButton(outputId = "download_wintering", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
 
       ) # End of tabsetPanel
@@ -565,6 +574,68 @@ server <- function(input, output, session) {
     # The content of the file will be the contents of the mtcars_plot() reactive expression
     content = function(file){ ggsave(filename = file, plot = group_plot(), width = 15, height = 8) }
     
+  )
+  
+  
+  # WINTERING ----
+  
+  # Generate an overall plot of change for species at estate level
+  wintering_plot <- reactive({
+
+    # Filter down WeBS data to just correct species
+    webs.species <- filter(webs, Species == input$species, Period == input$period)
+
+    # Generate a plot for that species and time period
+    (wintering_plot <- ggplot() +
+        
+        geom_point(data = filter(webs.species, DataUse == "Points"),
+                   aes(x = StartYear, y = value), size = 3, shape = 21, colour = "#000000", fill = "#4876FF") +
+        
+        geom_ribbon(data = filter(webs.species, DataUse == "Trendline"),
+                    aes(x = StartYear, ymin = lo, ymax = hi), alpha = 0.3, fill = "#4876FF") +
+        
+        geom_line(data = filter(webs.species, DataUse == "Trendline"),
+                  aes(x = StartYear, y = value), linewidth = 1, colour = "#4876FF") +
+        
+        scale_y_continuous(limits = c(0, NA)) +
+        
+        labs(title = unique(webs.species$Period),
+             subtitle = paste0("Wintering trend on RSPB reserves: **",
+                               ifelse(unique(webs.species$PercentChange) >= 0,
+                                      "<span style = 'color: #228B22;'>",
+                                      "<span style = 'color: #CD0000;'>"),
+                               unique(webs.species$PercentChange),
+                               "</span>",
+                               "** %"),
+             x = "\nYear",
+             y = "Estimated Monthly Maximum Count\n",
+             caption = paste0("Trend is **",
+                              ifelse(unique(webs.species$pvalue) < 0.05,
+                                     "<span style = 'color: #228B22;'>significant",
+                                     "<span style = 'color: #CD0000;'>not significant"),
+                              "</span>",
+                              "**",
+                              " as p = ",
+                              unique(webs.species$pvalue)
+             )) +
+        theme_1_tiny() +
+        theme(plot.subtitle = element_markdown(),
+              plot.caption = element_markdown()))
+
+  })
+
+  # Make the reactive into a plot
+  output$wintering <- renderPlot({ wintering_plot() })
+
+  # Generate a download button for the plot
+  output$download_wintering <- downloadHandler(
+
+    # The placeholder name for the file will be called mtcars_plot.png
+    filename = function() {paste0("wintering_", input$species, "_", input$period, ".png")},
+
+    # The content of the file will be the contents of the mtcars_plot() reactive expression
+    content = function(file){ ggsave(filename = file, plot = wintering_plot(), width = 15, height = 8) }
+
   )
   
  
