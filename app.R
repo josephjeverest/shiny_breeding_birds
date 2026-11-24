@@ -129,7 +129,7 @@ ui <- fluidPage(
                    radioButtons(inputId = "equalaxes",
                                 label = "- Show all sites with equal axes?",
                                 choices = c("Yes", "No"),
-                                selected = "No",
+                                selected = "Yes",
                                 inline = TRUE),
                    
                    selectInput(inputId = "group",
