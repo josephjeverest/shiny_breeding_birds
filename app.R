@@ -156,10 +156,11 @@ ui <- fluidPage(
                                                    value = uiOutput("nationaltrend"),  
                                                    theme = "bg-info"),
                                          
-                                         value_box(title = "Which performed better?",
-                                                   showcase = bs_icon("graph-up", size = 30), 
-                                                   value = uiOutput("better"),  
-                                                   theme = "bg-success")),
+                                         # value_box(title = "Which performed better?",
+                                         #           showcase = bs_icon("graph-up", size = 30), 
+                                         #           value = uiOutput("better"),  
+                                         #           theme = "bg-success")
+                                         ),
                       plotOutput("estate", height = "600px"), 
                       downloadButton(outputId = "download_estate", label = "Download Plot (.png)", class = "butt1"),
                       class = "dattab")),
@@ -183,10 +184,7 @@ ui <- fluidPage(
                                          value_box(title = "Aggregated Trend on RSPB Reserves", 
                                                    showcase = bs_icon("geo", size = 30), 
                                                    value = uiOutput("grouptrend"),
-                                                   theme = "bg-success"),
-                                         value_box(title = "", 
-                                                   value = "",
-                                                   theme = "bg-info")),
+                                                   theme = "bg-success")),
                       plotOutput("aggregated_group", height = "600px"),
                       downloadButton(outputId = "download_group", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab")),
@@ -201,10 +199,11 @@ ui <- fluidPage(
                                                    showcase = bs_icon("map", size = 30),
                                                    value = uiOutput("nationalwebs"),
                                                    theme = "bg-info"),
-                                         value_box(title = "Which performed better?",
-                                                   showcase = bs_icon("graph-up", size = 30),
-                                                   value = uiOutput("betterwebs"),
-                                                   theme = "bg-success")),
+                                         # value_box(title = "Which performed better?",
+                                         #           showcase = bs_icon("graph-up", size = 30),
+                                         #           value = uiOutput("betterwebs"),
+                                         #           theme = "bg-success")
+                                         ),
                       plotOutput("wintering", height = "600px"),
                       downloadButton(outputId = "download_wintering", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
@@ -627,25 +626,8 @@ server <- function(input, output, session) {
         
         scale_y_continuous(limits = c(0, NA)) +
         
-        labs(title = unique(webs.species$Period),
-             subtitle = paste0("**Wintering trends:**",
-                               "<br>",
-                               "     - RSPB reserves: **",
-                               ifelse(unique(filter(webs.species, Source == "RSPB Estate")$PercentChange) >= 0,
-                                      "<span style = 'color: #228B22;'>",
-                                      "<span style = 'color: #CD0000;'>"),
-                               unique(filter(webs.species, Source == "RSPB Estate")$PercentChange),
-                               "</span>",
-                               "** %",
-                               "<br>",
-                               "     - Nationally (UK): **",
-                               ifelse(unique(filter(webs.species, Source == "National Trend")$PercentChange) >= 0,
-                                      "<span style = 'color: #228B22;'>",
-                                      "<span style = 'color: #CD0000;'>"),
-                               unique(filter(webs.species, Source == "National Trend")$PercentChange),
-                               "</span>",
-                               "** %"
-             ),
+        labs(title = paste0("**", input$species, ":** Wintering Trends"),
+             subtitle = unique(webs.species$Period),
              x = "\nYear",
              y = "Index of Estimated Maximum Monthly Count*\n",
              caption = paste0("RSPB trend is **",
@@ -671,6 +653,7 @@ server <- function(input, output, session) {
              )) +
         theme_1_tiny() +
         theme(legend.position = "bottom",
+              plot.title = element_markdown(),
               plot.subtitle = element_markdown(),
               plot.caption = element_markdown()))
 
