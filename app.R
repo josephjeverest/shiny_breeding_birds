@@ -307,7 +307,7 @@ server <- function(input, output, session) {
                                      "<span style = 'color: #CD0000;'>"),
                               str_to_lower(unique(estate.species$RSPB_ModelFit)),
                               "</span>",
-                              "** model fit")) +
+                              "** model fit; bars represent SE")) +
         
         theme_1() +
         theme(legend.position = "right",
