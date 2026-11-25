@@ -270,7 +270,7 @@ server <- function(input, output, session) {
                       aes(x = Year, ymin = lo, ymax = hi), width = 0, colour = "#66CD00") +
         
         geom_point(data = filter(estate.species, DataUse == "Points"),
-                   aes(x = Year, y = value, fill = Source, shape = Source), size = 3, colour = "#000000") +
+                   aes(x = Year, y = value, fill = Source, shape = Source, colour = Source), size = 3) +
         
         geom_ribbon(data = filter(estate.species, DataUse == "Trendline"),
                     aes(x = Year, ymin = lo, ymax = hi, fill = Source), alpha = 0.3) +
