@@ -160,13 +160,13 @@ ui <- fluidPage(
                                                    showcase = bs_icon("graph-up", size = 30), 
                                                    value = uiOutput("better"),  
                                                    theme = "bg-success")),
-                      plotOutput("estate"),
+                      plotOutput("estate", height = "600px"), 
                       downloadButton(outputId = "download_estate", label = "Download Plot (.png)", class = "butt1"),
                       class = "dattab")),
 
         tabPanel("Site (Single)",
                  card("`\n",
-                      plotOutput("single_site"),
+                      plotOutput("single_site", height = "600px"),
                       downloadButton(outputId = "download_single_site", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab")),
         
@@ -187,7 +187,7 @@ ui <- fluidPage(
                                          value_box(title = "", 
                                                    value = "",
                                                    theme = "bg-info")),
-                      plotOutput("aggregated_group"),
+                      plotOutput("aggregated_group", height = "600px"),
                       downloadButton(outputId = "download_group", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab")),
         
@@ -205,7 +205,7 @@ ui <- fluidPage(
                                                    showcase = bs_icon("graph-up", size = 30),
                                                    value = uiOutput("betterwebs"),
                                                    theme = "bg-success")),
-                      plotOutput("wintering"),
+                      plotOutput("wintering", height = "600px"),
                       downloadButton(outputId = "download_wintering", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
 
@@ -255,11 +255,19 @@ server <- function(input, output, session) {
     
     # Filter down data to just correct species, site and year
     estate.species <- filter(estate, Species == input$species, TimePeriod == input$period)
-
+    
+    # Determine width of error bar tops
+    e.b.width <- case_when(input$period == "30 years (1995-2025)" ~ 0.3,
+                           input$period == "15 years (2010-2025)" ~ 0.15,
+                           input$period == "4 years (2021-2025)" ~ 0.03)
+    
     # Generate a plot for that species and time period
     (estate_plot <- ggplot() +
         
         geom_hline(yintercept = 100, linetype = "dashed", size = 0.5) +
+        
+        geom_errorbar(data = filter(estate.species, DataUse == "Points"),
+                      aes(x = Year, ymin = lo, ymax = hi), width = e.b.width) +
         
         geom_point(data = filter(estate.species, DataUse == "Points"),
                    aes(x = Year, y = value, fill = Source, shape = Source), size = 3, colour = "#000000") +
