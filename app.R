@@ -552,6 +552,8 @@ server <- function(input, output, session) {
         geom_line(data = filter(single.group, DataUse == "Trendline"),
                   aes(x = Year, y = value), colour = "#66CD00", linewidth = 1) +
         
+        scale_y_continuous(limits = c(0, NA)) + 
+        
         labs(x = "\nYear\n.",
              y = "Combined Population Index\n",
              title = input$group,
