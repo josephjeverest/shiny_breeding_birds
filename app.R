@@ -545,7 +545,7 @@ server <- function(input, output, session) {
         geom_hline(yintercept = 100, linetype = "dashed", size = 0.5) +
         
         geom_point(data = filter(single.group, DataUse == "Points"),
-                   aes(x = Year, y = value), size = 3, colour = "#000000", fill = "#66CD00", shape = 21) +
+                   aes(x = Year, y = value), size = 3, colour = "#66CD00", fill = "#66CD00", shape = 21) +
         
         geom_ribbon(data = filter(single.group, DataUse == "Trendline"),
                     aes(x = Year, ymin = lo, ymax = hi), fill = "#66CD00", alpha = 0.3) +
@@ -611,7 +611,7 @@ server <- function(input, output, session) {
         geom_hline(yintercept = 100, linetype = "dashed", size = 0.5) +
         
         geom_point(data = filter(webs.species, DataUse == "Points"),
-                   aes(x = StartYear, y = value, fill = Source, shape = Source), size = 3, colour = "#000000") +
+                   aes(x = StartYear, y = value, fill = Source, shape = Source, colour = Source), size = 3) +
         
         geom_ribbon(data = filter(webs.species, DataUse == "Trendline"),
                     aes(x = StartYear, ymin = lo, ymax = hi, fill = Source), alpha = 0.3) +
