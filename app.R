@@ -193,6 +193,18 @@ ui <- fluidPage(
         
         tabPanel("Wintering (WeBS)",
                  card("`\n",
+                      layout_column_wrap(value_box(title = "WeBS Trend on RSPB Reserves",
+                                                   showcase = bs_icon("geo", size = 30),
+                                                   value = uiOutput("rspbwebs"),
+                                                   theme = "bg-success"),
+                                         value_box(title = "National WeBS Trend",
+                                                   showcase = bs_icon("map", size = 30),
+                                                   value = uiOutput("nationalwebs"),
+                                                   theme = "bg-info"),
+                                         value_box(title = "Which performed better?",
+                                                   showcase = bs_icon("graph-up", size = 30),
+                                                   value = uiOutput("betterwebs"),
+                                                   theme = "bg-success")),
                       plotOutput("wintering"),
                       downloadButton(outputId = "download_wintering", label = "Download Data (.csv)", class = "butt2"),
                       class = "dattab"))
@@ -588,38 +600,70 @@ server <- function(input, output, session) {
     # Generate a plot for that species and time period
     (wintering_plot <- ggplot() +
         
+        geom_hline(yintercept = 100, linetype = "dashed", size = 0.5) +
+        
         geom_point(data = filter(webs.species, DataUse == "Points"),
-                   aes(x = StartYear, y = value), size = 3, shape = 21, colour = "#000000", fill = "#4876FF") +
+                   aes(x = StartYear, y = value, fill = Source, shape = Source), size = 3, colour = "#000000") +
         
         geom_ribbon(data = filter(webs.species, DataUse == "Trendline"),
-                    aes(x = StartYear, ymin = lo, ymax = hi), alpha = 0.3, fill = "#4876FF") +
+                    aes(x = StartYear, ymin = lo, ymax = hi, fill = Source), alpha = 0.3) +
         
         geom_line(data = filter(webs.species, DataUse == "Trendline"),
-                  aes(x = StartYear, y = value), linewidth = 1, colour = "#4876FF") +
+                  aes(x = StartYear, y = value, colour = Source), linewidth = 1) +
+        
+        scale_shape_manual(values = c(24, 21)) +
+        
+        scale_fill_manual(values = c("#4876FF", "#66CD00")) +
+        
+        scale_colour_manual(values = c("#4876FF", "#66CD00")) +
         
         scale_y_continuous(limits = c(0, NA)) +
         
         labs(title = unique(webs.species$Period),
-             subtitle = paste0("Wintering trend on RSPB reserves: **",
-                               ifelse(unique(webs.species$PercentChange) >= 0,
+             subtitle = paste0("**Wintering trends:**",
+                               "<br>",
+                               "     - RSPB reserves: **",
+                               ifelse(unique(filter(webs.species, Source == "RSPB Estate")$PercentChange) >= 0,
                                       "<span style = 'color: #228B22;'>",
                                       "<span style = 'color: #CD0000;'>"),
-                               unique(webs.species$PercentChange),
+                               unique(filter(webs.species, Source == "RSPB Estate")$PercentChange),
                                "</span>",
-                               "** %"),
+                               "** %",
+                               "<br>",
+                               "     - Nationally (UK): **",
+                               ifelse(unique(filter(webs.species, Source == "National Trend")$PercentChange) >= 0,
+                                      "<span style = 'color: #228B22;'>",
+                                      "<span style = 'color: #CD0000;'>"),
+                               unique(filter(webs.species, Source == "National Trend")$PercentChange),
+                               "</span>",
+                               "** %"
+             ),
              x = "\nYear",
-             y = "Estimated Monthly Maximum Count\n",
-             caption = paste0("Trend is **",
-                              ifelse(unique(webs.species$pvalue) < 0.05,
+             y = "Index of Estimated Maximum Monthly Count*\n",
+             caption = paste0("RSPB trend is **",
+                              ifelse(unique(filter(webs.species, Source == "RSPB Estate")$pvalue) < 0.05,
                                      "<span style = 'color: #228B22;'>significant",
                                      "<span style = 'color: #CD0000;'>not significant"),
                               "</span>",
                               "**",
                               " as p = ",
-                              unique(webs.species$pvalue)
+                              unique(filter(webs.species, Source == "RSPB Estate")$pvalue),
+                              "<br>",
+                              "National trend is **",
+                              ifelse(unique(filter(webs.species, Source == "National Trend")$pvalue) < 0.05,
+                                     "<span style = 'color: #228B22;'>significant",
+                                     "<span style = 'color: #CD0000;'>not significant"),
+                              "</span>",
+                              "**",
+                              " as p = ",
+                              unique(filter(webs.species, Source == "National Trend")$pvalue),
+                              "<br>",
+                              "<br>",
+                              "* index is set to zero in final year, not first year, due to BTO processes"
              )) +
         theme_1_tiny() +
-        theme(plot.subtitle = element_markdown(),
+        theme(legend.position = "bottom",
+              plot.subtitle = element_markdown(),
               plot.caption = element_markdown()))
 
   })
@@ -670,6 +714,33 @@ server <- function(input, output, session) {
    paste0(ifelse(unique(filter(aggregated.group, Group == input$group, TimePeriod == input$period)$RSPB_PercentChange) > 0, "+", ""),
           unique(filter(aggregated.group, Group == input$group, TimePeriod == input$period)$RSPB_PercentChange),
           "%") 
+ })
+ 
+ # Determine the RSPB WeBS change
+ output$rspbwebs <- renderText({
+   
+   paste0(ifelse(unique(filter(webs, Species == input$species, Period == input$period, Source == "RSPB Estate")$PercentChange) > 0, "+", ""),
+          unique(filter(webs, Species == input$species, Period == input$period, Source == "RSPB Estate")$PercentChange),
+          "%")
+ })
+ 
+ # Determine the national WeBS change
+ output$nationalwebs <- renderText({
+   
+   paste0(ifelse(unique(filter(webs, Species == input$species, Period == input$period, Source == "National Trend")$PercentChange) > 0, "+", ""),
+          unique(filter(webs, Species == input$species, Period == input$period, Source == "National Trend")$PercentChange),
+          "%")
+ })
+ 
+ # Determine which is better
+ output$betterwebs <- renderText({
+   
+   paste0(case_when(unique(filter(webs, Species == input$species, Period == input$period, Source == "RSPB Estate")$PercentChange) > 
+                      unique(filter(webs, Species == input$species, Period == input$period, Source == "National Trend")$PercentChange) ~ "RSPB",
+                    unique(filter(webs, Species == input$species, Period == input$period, Source == "RSPB Estate")$PercentChange) < 
+                      unique(filter(webs, Species == input$species, Period == input$period, Source == "National Trend")$PercentChange) ~ "National",
+                    unique(filter(webs, Species == input$species, Period == input$period, Source == "RSPB Estate")$PercentChange) == 
+                      unique(filter(webs, Species == input$species, Period == input$period, Source == "National Trend")$PercentChange) ~ "Equal"))
  })
   
 }
