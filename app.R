@@ -267,7 +267,7 @@ server <- function(input, output, session) {
         geom_hline(yintercept = 100, linetype = "dashed", size = 0.5) +
         
         geom_errorbar(data = filter(estate.species, DataUse == "Points"),
-                      aes(x = Year, ymin = lo, ymax = hi), width = e.b.width) +
+                      aes(x = Year, ymin = lo, ymax = hi), width = 0, colour = "#66CD00") +
         
         geom_point(data = filter(estate.species, DataUse == "Points"),
                    aes(x = Year, y = value, fill = Source, shape = Source), size = 3, colour = "#000000") +
